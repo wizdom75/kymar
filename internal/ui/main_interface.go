@@ -211,7 +211,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	status.TextStyle = fyne.TextStyle{Bold: true}
 
 	// Run query function - define early so it can be used in table selection callback
-	run := func() {
+	runQuery := func() {
 		if dbh == nil {
 			dialog.ShowInformation("Not connected", "Database connection lost.", w)
 			return
@@ -330,7 +330,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 			}
 
 			query.SetText(sqlQuery)
-			run()
+			runQuery()
 
 			// Deselect the cell
 			table.UnselectAll()
@@ -415,7 +415,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 						sqlQuery = fmt.Sprintf("SELECT * FROM `%s` LIMIT 100;", itemName)
 					}
 					query.SetText(sqlQuery)
-					run()
+					runQuery()
 				} else { // PostgreSQL
 					for _, col := range commonIDColumns {
 						idColumn = col
@@ -428,7 +428,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 						sqlQuery = fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 100;", itemName)
 					}
 					query.SetText(sqlQuery)
-					run()
+					runQuery()
 				}
 			}
 		}
@@ -446,7 +446,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		onDisconnect()
 	})
 
-	runBtn.OnTapped = run
+	runBtn.OnTapped = runQuery
 
 	// Keyboard shortcuts
 	s := &desktop.CustomShortcut{
@@ -455,7 +455,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	}
 	w.Canvas().AddShortcut(s, func(sc fyne.Shortcut) {
 		if w.Canvas().Focused() == query {
-			run()
+			runQuery()
 		}
 	})
 
