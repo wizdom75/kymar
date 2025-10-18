@@ -502,5 +502,11 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	root := container.NewHSplit(sidebar, mainContent)
 	root.SetOffset(0.2) // Narrow sidebar like Sequel Pro
 
-	w.SetContent(root)
+	// Add padding at the top to prevent macOS menu bar from obscuring content
+	spacer := canvas.NewRectangle(color.Transparent)
+	spacer.SetMinSize(fyne.NewSize(0, 2)) // Small top padding
+
+	rootWithPadding := container.NewBorder(spacer, nil, nil, nil, root)
+
+	w.SetContent(rootWithPadding)
 }
