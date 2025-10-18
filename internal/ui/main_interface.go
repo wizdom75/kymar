@@ -91,9 +91,9 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 				// Highlight the entire row if this row is selected
 				if rowIdx == selectedRow {
-					// Use a visible highlight color
-					bg.FillColor = color.RGBA{R: 0, G: 122, B: 255, A: 60} // Semi-transparent blue
-					lbl.TextStyle = fyne.TextStyle{Bold: true}
+					// Use a vivid, prominent highlight color like TablePlus
+					bg.FillColor = color.RGBA{R: 0, G: 115, B: 230, A: 255} // Solid blue highlight
+					lbl.TextStyle = fyne.TextStyle{Bold: false}
 				} else {
 					bg.FillColor = color.Transparent
 				}
