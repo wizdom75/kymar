@@ -1,6 +1,5 @@
 # Binaries
 kymar
-dbclient
 *.exe
 *.exe~
 *.dll
@@ -13,9 +12,6 @@ dbclient
 # Output of the go coverage tool
 *.out
 coverage.html
-
-# Dependency directories
-vendor/
 
 # Go workspace file
 go.work
@@ -33,5 +29,4 @@ Thumbs.db
 
 # User data
 .kymar/
-.dbclient/
 

@@ -145,6 +145,135 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		}
 	}
 
+	// Table information widget
+	tableInformation := widget.NewLabel("TABLE INFORMATION\n\nNo table selected")
+	tableInformation.Wrapping = fyne.TextWrapWord
+
+	// Helper function to format bytes
+	formatBytes := func(bytes int64) string {
+		const unit = 1024
+		if bytes < unit {
+			return fmt.Sprintf("%d B", bytes)
+		}
+		div, exp := int64(unit), 0
+		for n := bytes / unit; n >= unit; n /= unit {
+			div *= unit
+			exp++
+		}
+		return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+	}
+
+	// Helper function to format numbers with commas
+	formatNumber := func(n int64) string {
+		if n < 1000 {
+			return fmt.Sprintf("%d", n)
+		}
+		str := fmt.Sprintf("%d", n)
+		var result string
+		for i, c := range str {
+			if i > 0 && (len(str)-i)%3 == 0 {
+				result += ","
+			}
+			result += string(c)
+		}
+		return result
+	}
+
+	// Function to fetch and display table metadata
+	updateTableInfo := func(tableName string) {
+		if tableName == "" {
+			tableInformation.SetText("TABLE INFORMATION\n\nNo table selected")
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		var infoText string
+
+		if connParams.DBType == "mysql" {
+			// Use information_schema for more reliable, version-independent queries
+			query := `
+				SELECT 
+					ENGINE,
+					TABLE_ROWS,
+					DATA_LENGTH + INDEX_LENGTH as TOTAL_SIZE,
+					TABLE_COLLATION,
+					AUTO_INCREMENT,
+					CREATE_TIME
+				FROM information_schema.TABLES
+				WHERE TABLE_SCHEMA = DATABASE()
+				AND TABLE_NAME = ?
+			`
+			row := dbh.QueryRowContext(ctx, query, tableName)
+
+			var engine, collation sql.NullString
+			var rows, totalSize, autoIncrement sql.NullInt64
+			var createTime sql.NullTime
+
+			err := row.Scan(&engine, &rows, &totalSize, &collation, &autoIncrement, &createTime)
+
+			if err != nil {
+				infoText = fmt.Sprintf("Error fetching info:\n%v", err)
+			} else {
+				sizeStr := formatBytes(totalSize.Int64)
+
+				// Extract encoding from collation (e.g., utf8mb4_unicode_ci -> utf8mb4)
+				encoding := "unknown"
+				if collation.Valid && collation.String != "" {
+					encoding = collation.String
+				}
+
+				// Build info text with bullet points
+				infoText = "TABLE INFORMATION\n\n"
+				if createTime.Valid {
+					infoText += fmt.Sprintf("• created: %s\n", createTime.Time.Format("01/02/2006, 15:04"))
+				}
+				if engine.Valid {
+					infoText += fmt.Sprintf("• engine: %s\n", engine.String)
+				}
+				if rows.Valid {
+					infoText += fmt.Sprintf("• rows: %s\n", formatNumber(rows.Int64))
+				}
+				infoText += fmt.Sprintf("• size: %s\n", sizeStr)
+				infoText += fmt.Sprintf("• encoding: %s\n", encoding)
+				if autoIncrement.Valid && autoIncrement.Int64 > 0 {
+					infoText += fmt.Sprintf("• auto_increment: %s", formatNumber(autoIncrement.Int64))
+				}
+			}
+		} else {
+			// PostgreSQL table info
+			query := `
+				SELECT 
+					pg_size_pretty(pg_total_relation_size(quote_ident($1)::regclass)) as size,
+					(SELECT count(*) FROM ` + tableName + `) as row_count,
+					obj_description(quote_ident($1)::regclass) as comment
+			`
+			row := dbh.QueryRowContext(ctx, query, tableName)
+
+			var size, comment sql.NullString
+			var rowCount sql.NullInt64
+
+			err := row.Scan(&size, &rowCount, &comment)
+			if err != nil {
+				infoText = fmt.Sprintf("Error fetching info:\n%v", err)
+			} else {
+				infoText = "TABLE INFORMATION\n\n"
+				if rowCount.Valid {
+					infoText += fmt.Sprintf("• rows: %s\n", formatNumber(rowCount.Int64))
+				}
+				if size.Valid {
+					infoText += fmt.Sprintf("• size: %s\n", size.String)
+				}
+				if comment.Valid && comment.String != "" {
+					infoText += fmt.Sprintf("\n%s", comment.String)
+				}
+			}
+		}
+
+		tableInformation.SetText(infoText)
+	}
+
 	// Left sidebar (like Sequel Pro)
 	var tablesHeader *widget.Label
 	if connParams.DBType == "mysql" && connParams.DB == "" {
@@ -391,6 +520,9 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				// We're showing tables, generate a SELECT statement
 				currentTable = itemName
 
+				// Update table information display
+				updateTableInfo(itemName)
+
 				// Try to find an ID column for default sorting
 				var idColumn string
 				commonIDColumns := []string{"id", "ID", "Id", itemName + "_id", "pk"}
@@ -464,9 +596,13 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	tableListContainer := container.NewVScroll(tableList)
 
+	// Create information panel with proper styling
+	infoContainer := container.NewVScroll(tableInformation)
+	infoContainer.SetMinSize(fyne.NewSize(0, 150)) // Reserve space for info
+
 	sidebar := container.NewBorder(
 		container.NewVBox(tablesHeader, widget.NewSeparator()),
-		container.NewVBox(widget.NewSeparator(), disconnectBtn),
+		container.NewVBox(widget.NewSeparator(), infoContainer, widget.NewSeparator(), disconnectBtn),
 		nil, nil,
 		tableListContainer,
 	)
