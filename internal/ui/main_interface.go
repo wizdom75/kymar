@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"image/color"
 	"strings"
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/driver/desktop"
@@ -34,6 +36,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	// Table model state
 	var headers []string
 	var rows [][]string
+	var selectedRow int = -1 // Track which row is selected (-1 means none)
 
 	// Results table
 	table := widget.NewTable(
@@ -44,12 +47,17 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 			return len(rows) + 1, len(headers)
 		},
 		func() fyne.CanvasObject {
+			// Create a container with a background and a label
+			bg := canvas.NewRectangle(color.Transparent)
 			lbl := widget.NewLabel("")
-			lbl.Wrapping = fyne.TextTruncate // Truncate text that's too long
-			return lbl
+			lbl.Wrapping = fyne.TextTruncate
+			return container.NewMax(bg, lbl)
 		},
 		func(id widget.TableCellID, o fyne.CanvasObject) {
-			lbl := o.(*widget.Label)
+			c := o.(*fyne.Container)
+			bg := c.Objects[0].(*canvas.Rectangle)
+			lbl := c.Objects[1].(*widget.Label)
+
 			if id.Row == 0 {
 				// Header row styling
 				if id.Col < len(headers) {
@@ -69,6 +77,8 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				lbl.TextStyle = fyne.TextStyle{Bold: true}
 				lbl.Alignment = fyne.TextAlignCenter
 				lbl.Wrapping = fyne.TextTruncate
+				bg.FillColor = color.Transparent
+				bg.Refresh()
 				return
 			}
 			// Data rows
@@ -78,6 +88,16 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				lbl.Alignment = fyne.TextAlignLeading
 				lbl.Wrapping = fyne.TextTruncate
 				lbl.SetText(rows[rowIdx][id.Col])
+
+				// Highlight the entire row if this row is selected
+				if rowIdx == selectedRow {
+					// Use a visible highlight color
+					bg.FillColor = color.RGBA{R: 0, G: 122, B: 255, A: 60} // Semi-transparent blue
+					lbl.TextStyle = fyne.TextStyle{Bold: true}
+				} else {
+					bg.FillColor = color.Transparent
+				}
+				bg.Refresh()
 			}
 		},
 	)
@@ -204,6 +224,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		start := time.Now()
 		headers = nil
 		rows = rows[:0]
+		selectedRow = -1 // Reset selection when running a new query
 
 		// Decide exec vs query
 		lower := strings.ToLower(q)
@@ -297,6 +318,18 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 			// Deselect the cell
 			table.UnselectAll()
+		} else if id.Row > 0 {
+			// Clicked on a data row - highlight the entire row
+			rowIdx := id.Row - 1
+			if selectedRow == rowIdx {
+				// Clicking the same row again - deselect it
+				selectedRow = -1
+			} else {
+				// Select the new row
+				selectedRow = rowIdx
+			}
+			// Refresh the table to update highlighting
+			table.Refresh()
 		}
 	}
 
