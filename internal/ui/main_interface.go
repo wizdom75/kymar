@@ -34,7 +34,8 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	query.SetPlaceHolder("-- Enter your SQL query here\n-- Example: SELECT * FROM users LIMIT 10;\n-- Tip: Use Cmd+Enter or click 'Run Query' to execute")
 
 	// Table model state
-	var headers []string
+	var headers []string     // Display headers with types (e.g., "id (BIGINT)")
+	var columnNames []string // Column names without types (for queries)
 	var rows [][]string
 	var selectedRow int = -1 // Track which row is selected (-1 means none)
 
@@ -63,7 +64,8 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				if id.Col < len(headers) {
 					headerText := headers[id.Col]
 					// Add sort indicator if this column is being sorted
-					if currentTable != "" && sortColumn == headers[id.Col] {
+					// Compare against the actual column name, not the display header
+					if currentTable != "" && id.Col < len(columnNames) && sortColumn == columnNames[id.Col] {
 						if sortDirection == "ASC" {
 							headerText += " ▲"
 						} else {
@@ -209,8 +211,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	status.TextStyle = fyne.TextStyle{Bold: true}
 
 	// Run query function - define early so it can be used in table selection callback
-	var run func()
-	run = func() {
+	run := func() {
 		if dbh == nil {
 			dialog.ShowInformation("Not connected", "Database connection lost.", w)
 			return
@@ -235,10 +236,25 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				return
 			}
 			defer r.Close()
-			cols, _ := r.Columns()
-			headers = cols
-			vals := make([]sql.RawBytes, len(cols))
-			scanArgs := make([]any, len(cols))
+
+			// Get column types
+			colTypes, err := r.ColumnTypes()
+			if err != nil {
+				dialog.ShowError(err, w)
+				return
+			}
+
+			// Build headers with types and store plain column names
+			columnNames = make([]string, len(colTypes))
+			headers = make([]string, len(colTypes))
+			for i, col := range colTypes {
+				columnNames[i] = col.Name()
+				typeName := col.DatabaseTypeName()
+				headers[i] = fmt.Sprintf("%s (%s)", col.Name(), typeName)
+			}
+
+			vals := make([]sql.RawBytes, len(colTypes))
+			scanArgs := make([]any, len(colTypes))
 			for i := range vals {
 				scanArgs[i] = &vals[i]
 			}
@@ -248,7 +264,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 					dialog.ShowError(err, w)
 					return
 				}
-				out := make([]string, len(cols))
+				out := make([]string, len(colTypes))
 				for i, v := range vals {
 					if v == nil {
 						out[i] = "NULL"
@@ -286,9 +302,9 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	// Make column headers clickable for sorting (defined after run function)
 	table.OnSelected = func(id widget.TableCellID) {
-		if id.Row == 0 && currentTable != "" && id.Col < len(headers) {
+		if id.Row == 0 && currentTable != "" && id.Col < len(columnNames) {
 			// Clicked on a header - toggle sort
-			clickedColumn := headers[id.Col]
+			clickedColumn := columnNames[id.Col]
 
 			if sortColumn == clickedColumn {
 				// Toggle direction
