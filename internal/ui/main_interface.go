@@ -104,6 +104,10 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		},
 	)
 
+	// Set the header row to be sticky (non-scrolling)
+	table.StickyRowCount = 1
+	table.StickyColumnCount = 0
+
 	// Set intelligent column widths based on content
 	setupTableColumns := func() {
 		if len(headers) > 0 {
@@ -649,14 +653,14 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	queryArea := container.NewBorder(queryToolbar, nil, nil, nil, query)
 
 	// Results area
-	resultsHeader := widget.NewLabel("Query Results")
-	resultsHeader.TextStyle = fyne.TextStyle{Bold: true}
+	resultsHeader := widget.NewLabel("")
+	resultsHeader.TextStyle = fyne.TextStyle{Bold: false}
 
 	resultsArea := container.NewBorder(
 		resultsHeader,
 		status,
 		nil, nil,
-		container.NewVScroll(table),
+		table, // Table widget has built-in scrolling with fixed headers
 	)
 
 	// Main content area
