@@ -76,7 +76,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				} else {
 					lbl.SetText("")
 				}
-				lbl.TextStyle = fyne.TextStyle{Bold: false}
+				lbl.TextStyle = fyne.TextStyle{Monospace: true}
 				lbl.Alignment = fyne.TextAlignCenter
 				lbl.Wrapping = fyne.TextTruncate
 				bg.FillColor = color.Transparent
@@ -86,7 +86,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 			// Data rows
 			rowIdx := id.Row - 1
 			if rowIdx < len(rows) && id.Col < len(rows[rowIdx]) {
-				lbl.TextStyle = fyne.TextStyle{Bold: false}
+				lbl.TextStyle = fyne.TextStyle{Monospace: true}
 				lbl.Alignment = fyne.TextAlignLeading
 				lbl.Wrapping = fyne.TextTruncate
 				lbl.SetText(rows[rowIdx][id.Col])
@@ -95,7 +95,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				if rowIdx == selectedRow {
 					// Use a vivid, prominent highlight color like TablePlus
 					bg.FillColor = color.RGBA{R: 0, G: 115, B: 230, A: 255} // Solid blue highlight
-					lbl.TextStyle = fyne.TextStyle{Bold: false}
+					lbl.TextStyle = fyne.TextStyle{Monospace: true}
 				} else {
 					bg.FillColor = color.Transparent
 				}
@@ -327,7 +327,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		tablesHeader = widget.NewLabel("TABLES")
 	}
 
-	tablesHeader.TextStyle = fyne.TextStyle{Bold: true, Monospace: true}
+	tablesHeader.TextStyle = fyne.TextStyle{Monospace: true}
 
 	// Table list widget - declare early so it can be used in fetchTables
 	var tableList *widget.List
@@ -384,7 +384,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	// Status widget - declare early so it can be used in run function
 	status := widget.NewLabel("🟢 Connected")
-	status.TextStyle = fyne.TextStyle{Bold: true}
+	status.TextStyle = fyne.TextStyle{Monospace: true}
 
 	// Run query function - define early so it can be used in table selection callback
 	runQuery := func() {
@@ -634,7 +634,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	// Create information panel with proper styling
 	infoContainer := container.NewVScroll(tableInformation)
-	infoContainer.SetMinSize(fyne.NewSize(0, 150)) // Reserve space for info
+	infoContainer.SetMinSize(fyne.NewSize(0, 180)) // Reserve space for info
 
 	sidebar := container.NewBorder(
 		container.NewVBox(tablesHeader, widget.NewSeparator()),
@@ -645,7 +645,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	// Query editor area
 	queryHeader := widget.NewLabel("SQL Query")
-	queryHeader.TextStyle = fyne.TextStyle{Bold: true}
+	queryHeader.TextStyle = fyne.TextStyle{Monospace: true}
 
 	queryToolbar := container.NewHBox(
 		queryHeader,
@@ -672,7 +672,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	// Overall layout
 	root := container.NewHSplit(sidebar, mainContent)
-	root.SetOffset(0.2) // Narrow sidebar like Sequel Pro
+	root.SetOffset(0.17) // Narrow sidebar like Sequel Pro
 
 	// Add padding at the top to prevent macOS menu bar from obscuring content
 	spacer := canvas.NewRectangle(color.Transparent)
