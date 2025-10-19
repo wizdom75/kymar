@@ -179,6 +179,46 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		return result
 	}
 
+	// Helper function to get primary key column for a table
+	getPrimaryKeyColumn := func(tableName string) string {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		if connParams.DBType == "mysql" {
+			// Query for primary key in MySQL
+			query := `
+				SELECT COLUMN_NAME 
+				FROM information_schema.KEY_COLUMN_USAGE 
+				WHERE TABLE_SCHEMA = DATABASE() 
+				AND TABLE_NAME = ? 
+				AND CONSTRAINT_NAME = 'PRIMARY'
+				ORDER BY ORDINAL_POSITION
+				LIMIT 1
+			`
+			var pkColumn string
+			err := dbh.QueryRowContext(ctx, query, tableName).Scan(&pkColumn)
+			if err == nil {
+				return pkColumn
+			}
+		} else {
+			// Query for primary key in PostgreSQL
+			query := `
+				SELECT a.attname
+				FROM pg_index i
+				JOIN pg_attribute a ON a.attrelid = i.indrelid AND a.attnum = ANY(i.indkey)
+				WHERE i.indrelid = $1::regclass AND i.indisprimary
+				ORDER BY a.attnum
+				LIMIT 1
+			`
+			var pkColumn string
+			err := dbh.QueryRowContext(ctx, query, tableName).Scan(&pkColumn)
+			if err == nil {
+				return pkColumn
+			}
+		}
+		return ""
+	}
+
 	// Function to fetch and display table metadata
 	updateTableInfo := func(tableName string) {
 		if tableName == "" {
@@ -523,39 +563,28 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				// Update table information display
 				updateTableInfo(itemName)
 
-				// Try to find an ID column for default sorting
-				var idColumn string
-				commonIDColumns := []string{"id", "ID", "Id", itemName + "_id", "pk"}
+				// Try to find a sort column: primary key first, then fall back to common names
+				sortCol := getPrimaryKeyColumn(itemName)
 
-				// We'll default to the first column if we can't find an ID
-				// The actual ID detection will happen after we get the columns
-				sortColumn = ""
+				// If no primary key found, we'll just not sort
+				// (We could try common column names, but that can fail if they don't exist)
+
+				sortColumn = sortCol
 				sortDirection = "ASC"
 
-				// Generate query with ORDER BY for common ID columns
+				// Generate query with ORDER BY
 				var sqlQuery string
 				if connParams.DBType == "mysql" {
-					// Try to use id column if it exists
-					for _, col := range commonIDColumns {
-						idColumn = col
-						break
-					}
-					if idColumn != "" {
-						sqlQuery = fmt.Sprintf("SELECT * FROM `%s` ORDER BY `%s` ASC LIMIT 100;", itemName, idColumn)
-						sortColumn = idColumn
+					if sortCol != "" {
+						sqlQuery = fmt.Sprintf("SELECT * FROM `%s` ORDER BY `%s` ASC LIMIT 100;", itemName, sortCol)
 					} else {
 						sqlQuery = fmt.Sprintf("SELECT * FROM `%s` LIMIT 100;", itemName)
 					}
 					query.SetText(sqlQuery)
 					runQuery()
 				} else { // PostgreSQL
-					for _, col := range commonIDColumns {
-						idColumn = col
-						break
-					}
-					if idColumn != "" {
-						sqlQuery = fmt.Sprintf("SELECT * FROM \"%s\" ORDER BY \"%s\" ASC LIMIT 100;", itemName, idColumn)
-						sortColumn = idColumn
+					if sortCol != "" {
+						sqlQuery = fmt.Sprintf("SELECT * FROM \"%s\" ORDER BY \"%s\" ASC LIMIT 100;", itemName, sortCol)
 					} else {
 						sqlQuery = fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 100;", itemName)
 					}
