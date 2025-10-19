@@ -30,8 +30,8 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	var sortDirection string // "ASC" or "DESC"
 
 	// Query editor
-	query := widget.NewMultiLineEntry()
-	query.SetPlaceHolder("-- Enter your SQL query here\n-- Example: SELECT * FROM users LIMIT 10;\n-- Tip: Use Cmd+Enter or click 'Run Query' to execute")
+	queryEditorInput := widget.NewMultiLineEntry()
+	queryEditorInput.SetPlaceHolder("-- Enter your SQL query here\n-- Example: SELECT * FROM users LIMIT 10;\n-- Tip: Use Cmd+Enter or click 'Run Query' to execute")
 
 	// Table model state
 	var headers []string     // Display headers with types (e.g., "id (BIGINT)")
@@ -76,7 +76,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				} else {
 					lbl.SetText("")
 				}
-				lbl.TextStyle = fyne.TextStyle{Bold: true}
+				lbl.TextStyle = fyne.TextStyle{Bold: false}
 				lbl.Alignment = fyne.TextAlignCenter
 				lbl.Wrapping = fyne.TextTruncate
 				bg.FillColor = color.Transparent
@@ -86,7 +86,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 			// Data rows
 			rowIdx := id.Row - 1
 			if rowIdx < len(rows) && id.Col < len(rows[rowIdx]) {
-				lbl.TextStyle = fyne.TextStyle{}
+				lbl.TextStyle = fyne.TextStyle{Bold: false}
 				lbl.Alignment = fyne.TextAlignLeading
 				lbl.Wrapping = fyne.TextTruncate
 				lbl.SetText(rows[rowIdx][id.Col])
@@ -320,12 +320,14 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	// Left sidebar (like Sequel Pro)
 	var tablesHeader *widget.Label
+
 	if connParams.DBType == "mysql" && connParams.DB == "" {
 		tablesHeader = widget.NewLabel("DATABASES")
 	} else {
 		tablesHeader = widget.NewLabel("TABLES")
 	}
-	tablesHeader.TextStyle = fyne.TextStyle{Bold: true}
+
+	tablesHeader.TextStyle = fyne.TextStyle{Bold: true, Monospace: true}
 
 	// Table list widget - declare early so it can be used in fetchTables
 	var tableList *widget.List
@@ -358,22 +360,23 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		}
 		defer tableRows.Close()
 
-		var tables []string
+		var tablesList []string
 		for tableRows.Next() {
 			var tableName string
 			if err := tableRows.Scan(&tableName); err != nil {
 				fmt.Printf("Error scanning table name: %v\n", err)
 				continue
 			}
-			tables = append(tables, tableName)
+
+			tablesList = append(tablesList, tableName)
 		}
 
 		if err := tableRows.Err(); err != nil {
 			fmt.Printf("Error iterating table rows: %v\n", err)
 		}
 
-		fmt.Printf("Found %d tables: %v\n", len(tables), tables)
-		tableNames = tables
+		fmt.Printf("Found %d tables: %v\n", len(tablesList), tablesList)
+		tableNames = tablesList
 		if tableList != nil {
 			tableList.Refresh()
 		}
@@ -389,7 +392,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 			dialog.ShowInformation("Not connected", "Database connection lost.", w)
 			return
 		}
-		q := strings.TrimSpace(query.Text)
+		q := strings.TrimSpace(queryEditorInput.Text)
 		if q == "" {
 			return
 		}
@@ -502,7 +505,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 					currentTable, sortColumn, sortDirection)
 			}
 
-			query.SetText(sqlQuery)
+			queryEditorInput.SetText(sqlQuery)
 			runQuery()
 
 			// Deselect the cell
@@ -559,7 +562,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 				fetchTables()
 
 				// Show a success message in the query editor
-				query.SetText(fmt.Sprintf("-- Switched to database: %s\n-- Tables are now listed in the sidebar", itemName))
+				queryEditorInput.SetText(fmt.Sprintf("-- Switched to database: %s\n-- Tables are now listed in the sidebar", itemName))
 			} else {
 				// We're showing tables, generate a SELECT statement
 				currentTable = itemName
@@ -584,7 +587,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 					} else {
 						sqlQuery = fmt.Sprintf("SELECT * FROM `%s` LIMIT 100;", itemName)
 					}
-					query.SetText(sqlQuery)
+					queryEditorInput.SetText(sqlQuery)
 					runQuery()
 				} else { // PostgreSQL
 					if sortCol != "" {
@@ -592,7 +595,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 					} else {
 						sqlQuery = fmt.Sprintf("SELECT * FROM \"%s\" LIMIT 100;", itemName)
 					}
-					query.SetText(sqlQuery)
+					queryEditorInput.SetText(sqlQuery)
 					runQuery()
 				}
 			}
@@ -619,7 +622,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		Modifier: fyne.KeyModifierSuper,
 	}
 	w.Canvas().AddShortcut(s, func(sc fyne.Shortcut) {
-		if w.Canvas().Focused() == query {
+		if w.Canvas().Focused() == queryEditorInput {
 			runQuery()
 		}
 	})
@@ -650,11 +653,11 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 		runBtn,
 	)
 
-	queryArea := container.NewBorder(queryToolbar, nil, nil, nil, query)
+	queryArea := container.NewBorder(queryToolbar, nil, nil, nil, queryEditorInput)
 
 	// Results area
-	resultsHeader := widget.NewLabel("")
-	resultsHeader.TextStyle = fyne.TextStyle{Bold: false}
+	resultsHeader := widget.NewLabel("Query Results")
+	resultsHeader.TextStyle = fyne.TextStyle{Monospace: true}
 
 	resultsArea := container.NewBorder(
 		resultsHeader,
