@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 	"time"
@@ -27,6 +28,9 @@ var (
 func Connect(p ConnParams) (*sql.DB, func() error, error) {
 	// Build the dialer used when DSN protocol is "ssh"
 	var sshClose func() error = func() error { return nil }
+	var forwardListener net.Listener
+	var forwardDone chan struct{}
+
 	if p.UseSSH {
 		d, c, err := ssh.NewTunnelDialer(p.SSHHost, p.SSHPort, p.SSHUser, p.SSHPass)
 		if err != nil {
@@ -48,12 +52,66 @@ func Connect(p ConnParams) (*sql.DB, func() error, error) {
 				return defaultTCPDialer(ctx, addr)
 			})
 		})
+
+		// For PostgreSQL, lib/pq doesn't support custom dialers directly. Create a local TCP
+		// forwarder over the SSH connection and connect to that.
+		if p.DBType == "postgres" {
+			ln, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				return nil, nil, err
+			}
+			forwardListener = ln
+			forwardDone = make(chan struct{})
+			remoteAddr := fmt.Sprintf("%s:%d", p.Host, p.Port)
+			go func() {
+				for {
+					conn, err := ln.Accept()
+					if err != nil {
+						select {
+						case <-forwardDone:
+							return
+						default:
+							continue
+						}
+					}
+					go func(c net.Conn) {
+						defer c.Close()
+						rc, err := d("tcp", remoteAddr)
+						if err != nil {
+							return
+						}
+						defer rc.Close()
+						// Bi-directional copy
+						go io.Copy(rc, c)
+						io.Copy(c, rc)
+					}(conn)
+				}
+			}()
+
+			prevClose := sshClose
+			sshClose = func() error {
+				if forwardListener != nil {
+					close(forwardDone)
+					_ = forwardListener.Close()
+				}
+				return prevClose()
+			}
+		}
 	} else {
 		currentSSHDialer = nil
 	}
 
 	var dsn string
 	var driverName string
+	// Effective host/port (may be overridden by SSH forwarder for PostgreSQL)
+	effectiveHost := p.Host
+	effectivePort := p.Port
+	if p.UseSSH && p.DBType == "postgres" && forwardListener != nil {
+		if tcpAddr, ok := forwardListener.Addr().(*net.TCPAddr); ok {
+			effectiveHost = "127.0.0.1"
+			effectivePort = tcpAddr.Port
+		}
+	}
 
 	if p.DBType == "mysql" {
 		proto := "tcp"
@@ -71,16 +129,12 @@ func Connect(p ConnParams) (*sql.DB, func() error, error) {
 	} else { // PostgreSQL
 		if p.DB == "" {
 			dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s sslmode=disable",
-				p.Host, p.Port, p.User, p.Pass)
+				effectiveHost, effectivePort, p.User, p.Pass)
 		} else {
 			dsn = fmt.Sprintf("host=%s port=%d user=%s password=%s dbname=%s sslmode=disable",
-				p.Host, p.Port, p.User, p.Pass, p.DB)
+				effectiveHost, effectivePort, p.User, p.Pass, p.DB)
 		}
 		driverName = "postgres"
-
-		if p.UseSSH {
-			return nil, nil, fmt.Errorf("SSH tunneling is not yet supported for PostgreSQL")
-		}
 	}
 
 	dbh, err := sql.Open(driverName, dsn)

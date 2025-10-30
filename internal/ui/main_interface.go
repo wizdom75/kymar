@@ -329,8 +329,40 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	tablesHeader.TextStyle = fyne.TextStyle{Monospace: true}
 
+	// Filtered table names for search/filter
+	var filteredTableNames []string
+
+	// Table filter entry
+	tableFilterEntry := widget.NewEntry()
+	tableFilterEntry.SetPlaceHolder("Filter tables...")
+
 	// Table list widget - declare early so it can be used in fetchTables
 	var tableList *widget.List
+
+	// Filter function to update filtered table names
+	applyTableFilter := func() {
+		filterText := strings.ToLower(strings.TrimSpace(tableFilterEntry.Text))
+		if filterText == "" {
+			// No filter, show all tables
+			filteredTableNames = tableNames
+		} else {
+			// Filter tables by name
+			filteredTableNames = nil
+			for _, name := range tableNames {
+				if strings.Contains(strings.ToLower(name), filterText) {
+					filteredTableNames = append(filteredTableNames, name)
+				}
+			}
+		}
+		if tableList != nil {
+			tableList.Refresh()
+		}
+	}
+
+	// Setup filter entry callback
+	tableFilterEntry.OnChanged = func(string) {
+		applyTableFilter()
+	}
 
 	// Fetch tables function - defined early so it can be used in callbacks
 	fetchTables := func() {
@@ -377,9 +409,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 		fmt.Printf("Found %d tables: %v\n", len(tablesList), tablesList)
 		tableNames = tablesList
-		if tableList != nil {
-			tableList.Refresh()
-		}
+		applyTableFilter() // Apply current filter to new table list
 	}
 
 	// Status widget - declare early so it can be used in run function
@@ -527,17 +557,17 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 
 	// Now initialize the table list widget
 	tableList = widget.NewList(
-		func() int { return len(tableNames) },
+		func() int { return len(filteredTableNames) },
 		func() fyne.CanvasObject { return widget.NewLabel("") },
 		func(id widget.ListItemID, o fyne.CanvasObject) {
-			if id < len(tableNames) {
-				o.(*widget.Label).SetText(tableNames[id])
+			if id < len(filteredTableNames) {
+				o.(*widget.Label).SetText(filteredTableNames[id])
 			}
 		},
 	)
 	tableList.OnSelected = func(id widget.ListItemID) {
-		if id < len(tableNames) {
-			itemName := tableNames[id]
+		if id < len(filteredTableNames) {
+			itemName := filteredTableNames[id]
 
 			// Check if we're showing databases or tables
 			if connParams.DBType == "mysql" && connParams.DB == "" {
@@ -637,7 +667,7 @@ func ShowMainInterface(w fyne.Window, dbh *sql.DB, closer func() error, connPara
 	infoContainer.SetMinSize(fyne.NewSize(0, 180)) // Reserve space for info
 
 	sidebar := container.NewBorder(
-		container.NewVBox(tablesHeader, widget.NewSeparator()),
+		container.NewVBox(tablesHeader, tableFilterEntry, widget.NewSeparator()),
 		container.NewVBox(widget.NewSeparator(), infoContainer, widget.NewSeparator(), disconnectBtn),
 		nil, nil,
 		tableListContainer,
